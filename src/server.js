@@ -16,18 +16,30 @@ const app = express();
 app.use(express.json());
 
 // endpoints
-app.get('/getdata', async (req, res) => {
-  pool.query("SELECT product_key, price, description FROM products", (err, rows) => {
-    res.send(rows);
-    console.log(rows);
-  })
-});
+app.get('/api/getPostDataByNew/:limit', async (req, res) => {
+  const {limit} = req.params;
+  pool.query(`SELECT * FROM test_posts ORDER BY p_time_posted DESC LIMIT ${limit}`, (err, results) => {
+    if (err) {
+      res.status(500);
+    } else {
+      res.json(results);
+    }
+  });
+})
 
-app.get('/:name', async (req, res) => {
-  const {name} = req.params;
-  pool.query(`SELECT product_key, price, description FROM products WHERE product_key="${name}"`, (err, rows) => {
-    res.json(rows);
-  })
+app.get('/api/:postId', async (req, res) => {
+  const {postId} = req.params;
+  pool.query(`SELECT * FROM test_posts WHERE post_id="${postId}"`, (err, rows) => {
+    if (err) {
+      res.status(500);
+    } else {
+      if (rows.length != 0) {
+        res.json(rows);
+      } else {
+        res.sendStatus(404);
+      }
+    }
+  });
 })
 
 app.listen(3000, () => {
