@@ -7,8 +7,6 @@ import jwt from "jsonwebtoken";
 import "dotenv/config";
 import authenticateToken from "./authenticate.js";
 
-const saltRounds = 10;
-
 const pool = mysql.createPool({
   host: process.env.HOST,
   user: process.env.USERNAME,
@@ -53,22 +51,6 @@ app.post('/api/login', async (req, res) => {
                   resolve({token, user: results[0]});
                 }
               })
-                // const update = async () => {
-                //   await pool.execute('UPDATE users SET login_status = 1 WHERE email = ?', [email], (err, rows) => {
-                //     if (err) {
-                //       reject(err);
-                //     } else {
-                //       pool.execute(`SELECT user_id, username, login_status FROM users WHERE email = ?`, [email], (err, rows) => {
-                //         if (err) {
-                //           reject(err);
-                //         } else {
-                //           resolve(rows);
-                //         }
-                //       });
-                //     }
-                //   });
-                // }
-                // update();
             } else {
               reject(new Error("Invalid password."));
             }
@@ -135,8 +117,7 @@ app.post("/api/register", async (req, res) => {
 app.get("/api/getPostDataByNew", authenticateToken, async (req, res) => {
   try {
     const results = await new Promise((resolve, reject) => {
-      pool.query(
-        `
+      const query = `
         SELECT username, post_id, p_title, p_query, p_time_posted, p_upvotes, category_name 
         FROM test_posts p 
         LEFT JOIN users u
@@ -144,7 +125,9 @@ app.get("/api/getPostDataByNew", authenticateToken, async (req, res) => {
         LEFT JOIN categories c
           ON p.category_id = c.category_id
         ORDER BY p_time_posted DESC 
-        LIMIT 20`,
+        LIMIT 20`
+      pool.query(
+        query,
         (err, results) => {
           if (err) {
             reject(err);
@@ -160,11 +143,11 @@ app.get("/api/getPostDataByNew", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/api/getCommentDataByNew/:postId", async (req, res) => {
+app.get("/api/getCommentDataByNew/:postId", authenticateToken, async (req, res) => {
   const { postId } = req.params;
   try {
     const results = await new Promise((resolve, reject) => {
-      const query =         `
+      const query = `
         SELECT username, comment_id, c_query, c_time_posted, c_upvotes 
         FROM comments c 
         LEFT JOIN users u
@@ -189,7 +172,7 @@ app.get("/api/getCommentDataByNew/:postId", async (req, res) => {
   }
 });
 
-app.get("/api/:postId", async (req, res) => {
+app.get("/api/:postId", authenticateToken, async (req, res) => {
   const { postId } = req.params;
   try {
     const results = await new Promise((resolve, reject) => {
@@ -288,6 +271,54 @@ app.put("/api/:postId/:commentId/:vote", async (req, res) => {
     res.sendStatus(500);
   }
 });
+
+app.post('/api/create', authenticateToken, async (req, res) => {
+  const { user_id, p_title, p_query, category_name } = req.body;
+  try {
+    const results = await new Promise ((resolve, reject) => {
+      const query =  `SELECT category_id FROM categories WHERE category_name = ? LIMIT 1`;
+      pool.query(query, [category_name], (err, rows) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(rows[0] ? rows[0].category_id : 0);
+        }
+      })
+    })
+    await new Promise ((resolve, reject) => {
+      const query = `INSERT INTO test_posts VALUES (?, DEFAULT, ?, ?, DEFAULT, DEFAULT, ?)`;
+      pool.query(query, [user_id, p_title, p_query, results], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      })
+    })
+    res.status(200).send("post created");
+  } catch (error) {
+    res.status(500);
+  }
+})
+
+app.post('/api/comment', authenticateToken, async (req, res) => {
+  const { user_id, post_id, c_query } = req.body;
+  try {
+    await new Promise ((resolve, reject) => {
+      const query = `INSERT INTO comments VALUES (?, ?, DEFAULT, ?, DEFAULT, DEFAULT)`;
+      pool.query(query, [user_id, post_id, c_query], (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      })
+    })
+    res.status(200).send("comment created");
+  } catch (error) {
+    res.status(500);
+  }
+})
 
 app.listen(3000, () => {
   console.log("Listening...(3000)");
