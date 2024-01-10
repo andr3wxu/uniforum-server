@@ -7,6 +7,8 @@ import jwt from "jsonwebtoken";
 import "dotenv/config";
 import authenticateToken from "./authenticate.js";
 
+// migrate to mysql2-promise in future update.
+
 const pool = mysql.createPool({
   host: process.env.HOST,
   user: process.env.USERNAME,
@@ -61,9 +63,9 @@ app.post('/api/login', async (req, res) => {
     res.json(results);
   } catch (error) {
     if (error instanceof Error && error.message === "Invalid user credentials.") {
-      res.status(409).send("Invalid user credentials.");
+      res.status(409).send("Invalid user credentials");
     } else if (error instanceof Error && error.message === "Invalid password.") {
-      res.status(403).send("Invalid password.");
+      res.status(403).send("Invalid password");
     } else {
       res.status(500).json({ error: 'An unexpected error occurred.' });
     }
@@ -73,7 +75,7 @@ app.post('/api/login', async (req, res) => {
 app.post("/api/register", async (req, res) => {
   try {
     const {email, username, password} = req.body;
-    const results = await new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
       pool.query(`SELECT * FROM users WHERE email = ? OR username = ?`, [email, username], (err, rows) => {
         if (err) {
           reject(err);
@@ -87,12 +89,11 @@ app.post("/api/register", async (req, res) => {
                 return;
               } else {
                 const insert = async () => {
-                  await pool.execute('INSERT INTO users VALUES (DEFAULT, ?, ?, ?, 1)', [username, email, hashed]);
-                  await pool.execute(`SELECT user_id, username, login_status FROM users WHERE email = ?`, [email], (err, rows) => {
+                  await pool.execute('INSERT INTO users VALUES (DEFAULT, ?, ?, ?, 1)', [username, email, hashed], (err, rows) => {
                     if (err) {
                       reject(err);
                     } else {
-                      resolve(rows);
+                      resolve();
                     }
                   });
                 }
@@ -102,11 +103,26 @@ app.post("/api/register", async (req, res) => {
           }
         }
       });
+    }).then(() => {
+      return new Promise((resolve, reject) => {
+        const getUser = async () => {
+          await pool.execute(`SELECT user_id, username FROM users WHERE email = ? LIMIT 1`, [email], (err, rows) => {
+            if (err) {
+              reject(err);
+            } else {
+              const token = jwt.sign({ userId: rows[0].user_id, email: email }, process.env.JWT_SECRET, { expiresIn: '1h' });
+              res.json({token, user: rows[0]});
+              resolve();
+            }
+          });
+        }
+        getUser();
+      })
+    
     })
-    res.json(results);
   } catch (error) {
     if (error instanceof Error && error.message === "User with this email or username already exists.") {
-      res.status(409).send("User with this email or username already exists.");
+      res.status(409).send("User with this email or username already exists");
     } else {
       console.error(error);
       res.status(500).send("An unexpected error occurred.");
@@ -200,7 +216,7 @@ app.get("/api/:postId", authenticateToken, async (req, res) => {
   }
 });
 
-app.put("/api/:postId/:vote", async (req, res) => {
+app.put("/api/:postId/:vote", authenticateToken, async (req, res) => {
   const { postId, vote } = req.params;
   const { user_id } = req.body;
   if (vote != "upvote" && vote != "downvote") {
@@ -212,7 +228,6 @@ app.put("/api/:postId/:vote", async (req, res) => {
         `UPDATE test_posts SET p_upvotes=(p_upvotes${vote == "upvote" ? "+" : "-"}1) WHERE post_id=${postId} LIMIT 1`,
         (err) => {
           if (err) {
-            console.log(4);
             reject(err);
           } else {
             resolve();
@@ -220,17 +235,13 @@ app.put("/api/:postId/:vote", async (req, res) => {
         }
       );
     });
-    console.log(1)
     await new Promise((resolve, reject) => {
-      console.log(5)
       const upvoteQuery = `INSERT INTO upvoted_posts VALUES (?, ?)`
       const downvoteQuery = `DELETE FROM upvoted_posts WHERE user_id = ? AND post_id = ? LIMIT 1`
       pool.query(vote == "upvote" ? upvoteQuery : downvoteQuery, [user_id, postId], (err) => {
         if (err) {
-          console.log(3);
           reject(err);
         } else {
-          console.log(6)
           resolve("good");
         }
       })
@@ -240,7 +251,6 @@ app.put("/api/:postId/:vote", async (req, res) => {
         `SELECT p_upvotes FROM test_posts WHERE post_id="${postId}" LIMIT 1`,
         (err, results) => {
           if (err) {
-            console.log(1);
             reject(err);
           } else {
             res.json(results);
@@ -250,12 +260,11 @@ app.put("/api/:postId/:vote", async (req, res) => {
       );
     });
   } catch (error) {
-    console.log("error", error);
     res.sendStatus(500);
   }
 });
 
-app.put("/api/upvoteComment/:commentId/:vote", async (req, res) => {
+app.put("/api/upvoteComment/:commentId/:vote", authenticateToken, async (req, res) => {
   const { commentId, vote } = req.params;
   const { user_id } = req.body;
   if (vote != "upvote" && vote != "downvote") {
@@ -267,7 +276,6 @@ app.put("/api/upvoteComment/:commentId/:vote", async (req, res) => {
         `UPDATE comments SET c_upvotes=(c_upvotes${vote == "upvote" ? "+" : "-"}1) WHERE comment_id=${commentId} LIMIT 1`,
         (err) => {
           if (err) {
-            console.log(4);
             reject(err);
           } else {
             resolve();
@@ -275,17 +283,13 @@ app.put("/api/upvoteComment/:commentId/:vote", async (req, res) => {
         }
       );
     });
-    console.log(1)
     await new Promise((resolve, reject) => {
-      console.log(5)
       const upvoteQuery = `INSERT INTO upvoted_comments VALUES (?, ?)`
       const downvoteQuery = `DELETE FROM upvoted_comments WHERE user_id = ? AND comment_id = ? LIMIT 1`
       pool.query(vote == "upvote" ? upvoteQuery : downvoteQuery, [parseInt(user_id), parseInt(commentId)], (err) => {
         if (err) {
-          console.log(3);
           reject(err);
         } else {
-          console.log(6)
           resolve("good");
         }
       })
@@ -295,7 +299,6 @@ app.put("/api/upvoteComment/:commentId/:vote", async (req, res) => {
         `SELECT c_upvotes FROM comments WHERE comment_id="${commentId}" LIMIT 1`,
         (err, results) => {
           if (err) {
-            console.log(1);
             reject(err);
           } else {
             res.json(results);
@@ -305,12 +308,11 @@ app.put("/api/upvoteComment/:commentId/:vote", async (req, res) => {
       );
     });
   } catch (error) {
-    console.log("error", error);
     res.sendStatus(500);
   }
 });
 
-app.put('/api/isUpvote', async (req, res) => {
+app.put('/api/isUpvote', authenticateToken, async (req, res) => {
   const { user_id, post_id } = req.body;
   try {
     await new Promise ((resolve, reject) => {
@@ -328,7 +330,7 @@ app.put('/api/isUpvote', async (req, res) => {
   }
 })
 
-app.put('/api/isCommentUpvote', async (req, res) => {
+app.put('/api/isCommentUpvote', authenticateToken, async (req, res) => {
   const {user_id, comment_id} = req.body;
   try {
     await new Promise((resolve, reject) => {
@@ -396,7 +398,7 @@ app.post('/api/comment', authenticateToken, async (req, res) => {
   }
 })
 
-app.get("/api/myPosts/:userId", async (req, res) => {
+app.get("/api/myPosts/:userId", authenticateToken, async (req, res) => {
   try {
     const { userId } = req.params;
     const results = await new Promise((resolve, reject) => {
@@ -426,7 +428,7 @@ app.get("/api/myPosts/:userId", async (req, res) => {
   }
 });
 
-app.get('/api/userInfo/:userId', async (req, res) => {
+app.get('/api/userInfo/:userId', authenticateToken, async (req, res) => {
   try {
     const {userId} = req.params;
     await new Promise ((resolve, reject) => {
@@ -445,11 +447,10 @@ app.get('/api/userInfo/:userId', async (req, res) => {
   }
 })
 
-app.post('/api/edit/:userId', async (req, res) => {
+app.post('/api/edit/:userId', authenticateToken, async (req, res) => {
   try {
     const {userId} = req.params;
     const {username} = req.body;
-    console.log(username);
     await new Promise((resolve, reject) => {
       const query1 = 'SELECT * FROM users WHERE username = ? LIMIT 1';
       pool.query(query1, [username], (err, rows) => {
