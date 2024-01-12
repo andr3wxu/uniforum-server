@@ -216,6 +216,7 @@ app.get("/api/getCommentDataByNew/:postId", authenticateToken, async (req, res) 
 // deliver specific post
 app.get("/api/:postId", authenticateToken, async (req, res) => {
   try {
+    console.log("post requested");
     const { postId } = req.params;
     const results = await new Promise((resolve, reject) => {
       pool.query(
