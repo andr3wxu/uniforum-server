@@ -214,7 +214,7 @@ app.get("/api/getCommentDataByNew/:postId", authenticateToken, async (req, res) 
 });
 
 // deliver specific post
-app.get("/api/:postId", authenticateToken, async (req, res) => {
+app.get("/api/:postId", async (req, res) => {
   try {
     console.log("post requested");
     const { postId } = req.params;
